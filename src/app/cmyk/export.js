@@ -108,6 +108,10 @@ const COMPONENT_ALIASES = (groupName) => [
   [`${groupName}/Component/Link/Hovered`,            `{${groupName}/Solid/Hovered}`],
 ];
 
+// Builds one DTCG token file for a given mode.
+// Component aliases are embedded in the SAME file as the concrete scale tokens
+// so Figma can resolve {Group/Token} references on import without needing a
+// separately-imported file. A standalone components file is no longer needed.
 function buildSemanticTokens(colours, modeKey, mapping = DEFAULT_SEMANTIC_MAPPING) {
   const root = {};
 
@@ -116,6 +120,7 @@ function buildSemanticTokens(colours, modeKey, mapping = DEFAULT_SEMANTIC_MAPPIN
     const scale     = modeKey === 'light' ? palette.light : palette.dark;
     const groupName = sanitise(entry.label || `RGB ${entry.r} ${entry.g} ${entry.b}`);
 
+    // ── Semantic scale (concrete colour values) ──────────────────────────────
     mapping.forEach(([group, token, description], i) => {
       const step = scale[i];
       if (!root[groupName]) root[groupName] = {};
@@ -138,18 +143,16 @@ function buildSemanticTokens(colours, modeKey, mapping = DEFAULT_SEMANTIC_MAPPIN
       ...colorToken(entry.r, entry.g, entry.b),
       $description: 'Source colour — primary brand fill',
     };
-  });
 
-  return root;
-}
-
-function buildComponentTokens(colours) {
-  const root = {};
-  colours.forEach(entry => {
-    const groupName = sanitise(entry.label || `RGB ${entry.r} ${entry.g} ${entry.b}`);
+    // ── Component aliases (embedded in this file so Figma resolves them) ─────
+    // Aliases reference the concrete tokens above — they must live in the same
+    // JSON file for Figma's native import to resolve the {Group/Token} syntax.
+    if (!root[groupName]['Component']) root[groupName]['Component'] = { $type: 'color' };
     COMPONENT_ALIASES(groupName).forEach(([tokenPath, ref]) => {
-      const parts = tokenPath.split('/');
-      let node = root;
+      // tokenPath is e.g. "Pantone 485/Component/Button/Background"
+      // We strip the leading groupName and "Component/" to get ["Button","Background"]
+      const parts = tokenPath.split('/').slice(2); // skip groupName + "Component"
+      let node = root[groupName]['Component'];
       parts.forEach((part, i) => {
         if (i === parts.length - 1) {
           node[part] = { $type: 'color', $value: ref, $description: 'Component alias' };
@@ -160,6 +163,7 @@ function buildComponentTokens(colours) {
       });
     });
   });
+
   return root;
 }
 
@@ -206,6 +210,9 @@ function downloadJSON(data, filename) {
 //   includeHarmonies: boolean — also export tokens-harmonies.json
 //   semanticMapping:  array   — override the 12-step semantic mapping
 
+// Exports 2 files (light + dark), each containing the full scale AND component
+// aliases embedded together. Import light → set Light mode. Import dark → set
+// Dark mode. No separate components file needed — aliases resolve inside each file.
 export function downloadFigmaVariables(colours, options = {}) {
   const { includeHarmonies = false, semanticMapping } = options;
   const date    = new Date().toISOString().slice(0, 10);
@@ -215,13 +222,10 @@ export function downloadFigmaVariables(colours, options = {}) {
   setTimeout(() => {
     downloadJSON(buildSemanticTokens(colours, 'dark', mapping), `tokens-dark-${date}.json`);
   }, 400);
-  setTimeout(() => {
-    downloadJSON(buildComponentTokens(colours), `tokens-components-${date}.json`);
-  }, 800);
   if (includeHarmonies) {
     setTimeout(() => {
       downloadJSON(buildHarmonyTokens(colours), `tokens-harmonies-${date}.json`);
-    }, 1200);
+    }, 800);
   }
 }
 

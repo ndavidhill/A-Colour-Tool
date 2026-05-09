@@ -465,7 +465,7 @@ export default function Controls({
           Export → Figma Tokens + Harmonies
         </Btn>
         <div style={{ fontSize: 9, opacity: 0.4, lineHeight: 1.6, marginBottom: 4, fontFamily: 'Helvetica, Arial, sans-serif' }}>
-          Exports tokens-light.json, tokens-dark.json, tokens-components.json, tokens-harmonies.json.
+          Exports tokens-light.json + tokens-dark.json. Component aliases are embedded inside each file so Figma resolves them on import. Import light → set Light mode, import dark → set Dark mode.
         </div>
         <Btn onClick={() => window.print()}>Print / PDF</Btn>
 
