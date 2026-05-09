@@ -4,8 +4,11 @@ import Controls from './components/Controls';
 import ColourResult from './components/ColourResult';
 import ContrastMatrix from './components/ContrastMatrix';
 import HealthReport from './components/HealthReport';
+import CompareView from './components/CompareView';
 
-const STORAGE_KEY = 'cmyk-grid-session';
+const STORAGE_KEY    = 'cmyk-grid-session';
+const PALETTES_KEY   = 'cmyk-grid-palettes';
+const PREV_KEY       = 'cmyk-grid-previous';
 const DEFAULT_COLOURS = [{ r: 218, g: 41, b: 28, label: 'Pantone 485' }];
 
 function loadSession() {
@@ -24,8 +27,33 @@ function saveSession(colours, step, spread, inverted) {
   } catch (e) {}
 }
 
+function loadPalettes() {
+  try {
+    const raw = localStorage.getItem(PALETTES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+}
+
+function savePalettes(palettes) {
+  try { localStorage.setItem(PALETTES_KEY, JSON.stringify(palettes)); } catch (e) {}
+}
+
+function snapshotToPrev(colours, step, spread) {
+  try {
+    localStorage.setItem(PREV_KEY, JSON.stringify({ colours, step, spread }));
+  } catch (e) {}
+}
+
+function loadPrev() {
+  try {
+    const raw = localStorage.getItem(PREV_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
 const VIEWS = [
   { key: 'grid',     label: 'Grid' },
+  { key: 'compare',  label: 'Compare' },
   { key: 'contrast', label: 'Contrast' },
   { key: 'health',   label: 'Health' },
 ];
@@ -39,6 +67,17 @@ export default function CMYKTester() {
   const [cbFilter, setCbFilter] = useState('none');
   const [view, setView]         = useState('grid');
 
+  // Saved palettes
+  const [palettes, setPalettes] = useState({});
+
+  // Configurable print/accessibility thresholds
+  const [tacLimit, setTacLimit]           = useState(330);
+  const [gamutThreshold, setGamutThreshold] = useState(4.0);
+  const [contrastMin, setContrastMin]     = useState(4.5);
+
+  // Whether a previous session snapshot exists (for undo/restore)
+  const [hasPrev, setHasPrev] = useState(false);
+
   useEffect(() => {
     const saved = loadSession();
     if (saved) {
@@ -47,6 +86,8 @@ export default function CMYKTester() {
       if (saved.spread)  setSpread(saved.spread);
       if (saved.inverted !== undefined) setInverted(saved.inverted);
     }
+    setPalettes(loadPalettes());
+    setHasPrev(!!loadPrev());
     setReady(true);
   }, []);
 
@@ -54,6 +95,45 @@ export default function CMYKTester() {
     if (!ready) return;
     saveSession(colours, step, spread, inverted);
   }, [colours, step, spread, inverted, ready]);
+
+  // Palette operations
+  function savePalette(name) {
+    if (!name.trim()) return;
+    const next = { ...palettes, [name.trim()]: { colours, step, spread, created: Date.now() } };
+    setPalettes(next);
+    savePalettes(next);
+  }
+
+  function loadPalette(name) {
+    const p = palettes[name];
+    if (!p) return;
+    snapshot();
+    setColours(p.colours);
+    if (p.step)   setStep(p.step);
+    if (p.spread) setSpread(p.spread);
+  }
+
+  function deletePalette(name) {
+    const next = { ...palettes };
+    delete next[name];
+    setPalettes(next);
+    savePalettes(next);
+  }
+
+  // Snapshot before destructive operations
+  function snapshot() {
+    snapshotToPrev(colours, step, spread);
+    setHasPrev(true);
+  }
+
+  function restorePrev() {
+    const prev = loadPrev();
+    if (!prev) return;
+    snapshot(); // save current as new prev before restoring
+    setColours(prev.colours);
+    if (prev.step)   setStep(prev.step);
+    if (prev.spread) setSpread(prev.spread);
+  }
 
   const bg     = inverted ? '#000' : '#fff';
   const fg     = inverted ? '#fff' : '#000';
@@ -109,6 +189,16 @@ export default function CMYKTester() {
           inverted={inverted} setInverted={setInverted}
           cbFilter={cbFilter} setCbFilter={setCbFilter}
           view={view} setView={setView}
+          palettes={palettes}
+          onSavePalette={savePalette}
+          onLoadPalette={loadPalette}
+          onDeletePalette={deletePalette}
+          hasPrev={hasPrev}
+          onSnapshot={snapshot}
+          onRestorePrev={restorePrev}
+          tacLimit={tacLimit} setTacLimit={setTacLimit}
+          gamutThreshold={gamutThreshold} setGamutThreshold={setGamutThreshold}
+          contrastMin={contrastMin} setContrastMin={setContrastMin}
         />
       </div>
 
@@ -138,9 +228,7 @@ export default function CMYKTester() {
         }}
       >
         {/* View switcher */}
-        <div className="no-print" style={{
-          display: 'flex', gap: 2, marginBottom: 12,
-        }}>
+        <div className="no-print" style={{ display: 'flex', gap: 2, marginBottom: 12 }}>
           {VIEWS.map(v => (
             <button
               key={v.key}
@@ -186,12 +274,21 @@ export default function CMYKTester() {
           </>
         )}
 
+        {ready && view === 'compare' && (
+          <CompareView colours={colours} step={step} spread={spread} />
+        )}
+
         {ready && view === 'contrast' && (
           <ContrastMatrix colours={colours} />
         )}
 
         {ready && view === 'health' && (
-          <HealthReport colours={colours} />
+          <HealthReport
+            colours={colours}
+            tacLimit={tacLimit}
+            gamutThreshold={gamutThreshold}
+            contrastMin={contrastMin}
+          />
         )}
       </div>
     </div>

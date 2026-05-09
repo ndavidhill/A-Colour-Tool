@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { rgbToHex, rgbToCmyk, cmykToRgb, isOutOfGamut, nearestPantones } from '../colourMath';
 import { nameColour } from '../colourNames';
+import { apcaContrast, apcaLevel } from '../apca';
 
 function relativeLuminance(r, g, b) {
   const s = [r, g, b].map(v => {
@@ -11,13 +12,13 @@ function relativeLuminance(r, g, b) {
   return 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
 }
 
-function contrastVsWhite(r, g, b) {
+function wcagVsWhite(r, g, b) {
   const l = relativeLuminance(r, g, b);
-  return (1.05) / (l + 0.05);
+  return 1.05 / (l + 0.05);
 }
-function contrastVsBlack(r, g, b) {
+function wcagVsBlack(r, g, b) {
   const l = relativeLuminance(r, g, b);
-  return (l + 0.05) / (0.05);
+  return (l + 0.05) / 0.05;
 }
 
 function StatusDot({ status }) {
@@ -31,45 +32,53 @@ function StatusDot({ status }) {
   );
 }
 
-function ColourHealthRow({ entry }) {
+function ColourHealthRow({ entry, tacLimit, gamutThreshold, contrastMin }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
     const id = setTimeout(() => {
-      const cmyk      = rgbToCmyk(entry.r, entry.g, entry.b);
-      const gamut     = isOutOfGamut(entry.r, entry.g, entry.b);
-      const pantones  = nearestPantones(entry.r, entry.g, entry.b, 1);
-      const colName   = nameColour(entry.r, entry.g, entry.b);
-      const tac       = cmyk.c + cmyk.m + cmyk.y + cmyk.k;
-      const cvw       = contrastVsWhite(entry.r, entry.g, entry.b);
-      const cvb       = contrastVsBlack(entry.r, entry.g, entry.b);
-      const maxContrast = Math.max(cvw, cvb);
+      const cmyk     = rgbToCmyk(entry.r, entry.g, entry.b);
+      const gamut    = isOutOfGamut(entry.r, entry.g, entry.b);
+      const pantones = nearestPantones(entry.r, entry.g, entry.b, 1);
+      const colName  = nameColour(entry.r, entry.g, entry.b);
+      const tac      = cmyk.c + cmyk.m + cmyk.y + cmyk.k;
+      const cvw      = wcagVsWhite(entry.r, entry.g, entry.b);
+      const cvb      = wcagVsBlack(entry.r, entry.g, entry.b);
 
-      setData({ cmyk, gamut, pantones, colName, tac, cvw, cvb, maxContrast });
+      // APCA vs white and black
+      const apcaVsWhite = apcaContrast(entry.r, entry.g, entry.b, 255, 255, 255);
+      const apcaVsBlack = apcaContrast(entry.r, entry.g, entry.b, 0, 0, 0);
+      const bestApca = Math.abs(apcaVsWhite) >= Math.abs(apcaVsBlack) ? apcaVsWhite : apcaVsBlack;
+
+      setData({ cmyk, gamut, pantones, colName, tac, cvw, cvb, bestApca, apcaVsWhite, apcaVsBlack });
     }, 0);
     return () => clearTimeout(id);
   }, [entry.r, entry.g, entry.b]);
 
   const hex = rgbToHex(entry.r, entry.g, entry.b);
 
-  // Health checks
   const checks = data ? [
     {
       label: 'FOGRA39 Gamut',
       status: data.gamut.outOfGamut ? 'fail' : 'pass',
       detail: data.gamut.outOfGamut
-        ? `Out of gamut — press result will differ by dE ${data.gamut.deltaE.toFixed(1)}`
+        ? `Out of gamut — press result will differ by dE ${data.gamut.deltaE.toFixed(1)} (threshold dE ${gamutThreshold})`
         : `In gamut — reproducible on coated offset (dE ${data.gamut.deltaE.toFixed(1)})`,
     },
     {
-      label: 'Ink Coverage (TAC)',
-      status: data.tac > 320 ? 'warn' : data.tac > 330 ? 'fail' : 'pass',
-      detail: `${data.tac}% total ink · FOGRA39 limit 330%${data.tac > 300 ? ' — approaching limit' : ''}`,
+      label: `Ink Coverage (TAC, limit ${tacLimit}%)`,
+      status: data.tac > tacLimit ? 'fail' : data.tac > tacLimit * 0.95 ? 'warn' : 'pass',
+      detail: `${data.tac}% total ink · limit ${tacLimit}%${data.tac > tacLimit * 0.9 ? ' — approaching limit' : ''}`,
     },
     {
-      label: 'WCAG Contrast',
-      status: data.maxContrast >= 4.5 ? 'pass' : data.maxContrast >= 3 ? 'warn' : 'fail',
-      detail: `vs White: ${data.cvw.toFixed(1)}:1 · vs Black: ${data.cvb.toFixed(1)}:1 · Best: ${data.maxContrast.toFixed(1)}:1`,
+      label: 'WCAG 2.1 Contrast',
+      status: Math.max(data.cvw, data.cvb) >= contrastMin ? 'pass' : Math.max(data.cvw, data.cvb) >= 3 ? 'warn' : 'fail',
+      detail: `vs White ${data.cvw.toFixed(1)}:1 · vs Black ${data.cvb.toFixed(1)}:1 · min required ${contrastMin}:1`,
+    },
+    {
+      label: 'APCA (WCAG 3 draft)',
+      status: apcaLevel(data.bestApca).ok ? 'pass' : Math.abs(data.bestApca) >= 30 ? 'warn' : 'fail',
+      detail: `vs White Lc ${Math.abs(data.apcaVsWhite).toFixed(0)} · vs Black Lc ${Math.abs(data.apcaVsBlack).toFixed(0)} · ${apcaLevel(data.bestApca).label}`,
     },
     {
       label: 'Pantone Match',
@@ -86,13 +95,11 @@ function ColourHealthRow({ entry }) {
 
   return (
     <div style={{
-      marginBottom: 12,
-      borderRadius: 6,
+      marginBottom: 12, borderRadius: 6,
       border: `1px solid ${data ? overallBorder[overallStatus] : 'var(--color-accent)'}`,
       overflow: 'hidden',
       pageBreakInside: 'avoid', breakInside: 'avoid',
     }}>
-      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '8px 12px',
@@ -138,10 +145,9 @@ function ColourHealthRow({ entry }) {
         )}
       </div>
 
-      {/* Checks */}
       {!data ? (
         <div style={{ padding: '8px 12px', fontSize: 10, opacity: 0.4, fontFamily: 'Helvetica, Arial, sans-serif', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.02rem' }}>
-          Analysing...
+          Analysing…
         </div>
       ) : (
         <div style={{ padding: '6px 12px 8px' }}>
@@ -176,7 +182,7 @@ function ColourHealthRow({ entry }) {
   );
 }
 
-export default function HealthReport({ colours }) {
+export default function HealthReport({ colours, tacLimit = 330, gamutThreshold = 4.0, contrastMin = 4.5 }) {
   if (colours.length === 0) {
     return (
       <div style={{
@@ -204,10 +210,8 @@ export default function HealthReport({ colours }) {
           fontWeight: 'bold', letterSpacing: '0.02rem', textTransform: 'uppercase',
           color: 'var(--color-fg)', opacity: 0.4,
         }}>
-          {colours.length} colour{colours.length !== 1 ? 's' : ''} · {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} · FOGRA39 / WCAG 2.1
+          {colours.length} colour{colours.length !== 1 ? 's' : ''} · {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} · FOGRA39 / WCAG 2.1 + APCA
         </div>
-
-        {/* Legend */}
         <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
           {[
             { color: '#16a34a', label: 'Pass — no action needed' },
@@ -227,7 +231,13 @@ export default function HealthReport({ colours }) {
       </div>
 
       {colours.map((entry, i) => (
-        <ColourHealthRow key={`${entry.r}-${entry.g}-${entry.b}-${i}`} entry={entry} />
+        <ColourHealthRow
+          key={`${entry.r}-${entry.g}-${entry.b}-${i}`}
+          entry={entry}
+          tacLimit={tacLimit}
+          gamutThreshold={gamutThreshold}
+          contrastMin={contrastMin}
+        />
       ))}
 
       <div style={{
@@ -237,9 +247,9 @@ export default function HealthReport({ colours }) {
         fontWeight: 'bold', letterSpacing: '0.02rem', textTransform: 'uppercase',
         color: 'var(--color-fg)', opacity: 0.3, lineHeight: 1.6,
       }}>
-        Gamut check uses FOGRA39 / ISO 12647-2:2004 coated offset constraints (TAC 330%, K max 85%). 
-        WCAG contrast uses relative luminance per WCAG 2.1 §1.4.3. 
-        Pantone match uses DeltaE2000 in Lab D50.
+        Gamut check uses FOGRA39 / ISO 12647-2:2004 coated offset constraints (TAC {tacLimit}%, K max 85%).
+        WCAG contrast uses relative luminance per WCAG 2.1 §1.4.3.
+        APCA uses APCA-W3 Lc (draft WCAG 3). Pantone match uses ΔE2000 in Lab D50.
       </div>
     </div>
   );

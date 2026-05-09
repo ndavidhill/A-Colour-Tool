@@ -1,13 +1,24 @@
 'use client';
+import { useState } from 'react';
 import { rgbToHex, useDarkText, isOutOfGamut } from '../colourMath';
 
 export default function Swatch({ sw, isNearest, isSelected, onClick }) {
   const hex  = rgbToHex(sw.r, sw.g, sw.b);
   const dark = useDarkText(sw.r, sw.g, sw.b);
   const textColor = dark ? '#000000' : '#ffffff';
-
-  // Gamut check — memoised implicitly since sw values are stable per render
   const gamut = isOutOfGamut(sw.r, sw.g, sw.b);
+
+  const [copied, setCopied] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  function handleCopy(e) {
+    e.stopPropagation();
+    const text = `C${sw.c} M${sw.m} Y${sw.y} K${sw.k}`;
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    });
+  }
 
   const outline = isSelected
     ? '2px solid var(--color-fg)'
@@ -19,6 +30,8 @@ export default function Swatch({ sw, isNearest, isSelected, onClick }) {
     <div
       className="swatch-cell"
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         background: hex,
         WebkitPrintColorAdjust: 'exact',
@@ -40,9 +53,9 @@ export default function Swatch({ sw, isNearest, isSelected, onClick }) {
         position: 'relative',
         cursor: 'pointer',
         userSelect: 'none',
+        opacity: hovered && !isSelected ? 0.85 : 1,
+        transition: 'opacity 0.1s',
       }}
-      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.opacity = '0.85'; }}
-      onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
     >
       {/* Nearest / selected label */}
       {isNearest && (
@@ -71,13 +84,12 @@ export default function Swatch({ sw, isNearest, isSelected, onClick }) {
       {/* Out-of-gamut warning badge */}
       {gamut.outOfGamut && (
         <div
-          title={`Out of FOGRA39 gamut — press reproduction will differ by dE ${gamut.deltaE.toFixed(1)}`}
+          title={`Out of FOGRA39 gamut — press result will differ by dE ${gamut.deltaE.toFixed(1)}`}
           style={{
             position: 'absolute', top: 4, right: 4,
             width: 8, height: 8, borderRadius: '50%',
             background: '#ef4444',
             border: '1px solid rgba(255,255,255,0.6)',
-            flexShrink: 0,
           }}
         />
       )}
@@ -88,6 +100,29 @@ export default function Swatch({ sw, isNearest, isSelected, onClick }) {
       <div style={{ color: textColor, opacity: 0.6, fontSize: 9, marginTop: 3 }}>
         {hex.toUpperCase()}
       </div>
+
+      {/* Copy button — shown on hover */}
+      {hovered && (
+        <button
+          onClick={handleCopy}
+          title="Copy CMYK values"
+          style={{
+            position: 'absolute', bottom: 5, right: 5,
+            background: copied
+              ? 'rgba(34,197,94,0.85)'
+              : dark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)',
+            color: textColor,
+            border: 'none', borderRadius: 3,
+            fontFamily: 'Helvetica, Arial, sans-serif',
+            fontSize: 7, fontWeight: 'bold',
+            letterSpacing: '0.03rem', textTransform: 'uppercase',
+            padding: '2px 4px', cursor: 'pointer',
+            lineHeight: 1.4,
+          }}
+        >
+          {copied ? '✓ Copied' : 'Copy'}
+        </button>
+      )}
     </div>
   );
 }

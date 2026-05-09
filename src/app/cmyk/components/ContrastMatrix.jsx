@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { rgbToHex, useDarkText, rgbToCmyk } from '../colourMath';
 import { nameColour } from '../colourNames';
+import { apcaContrast, apcaLevel } from '../apca';
 
 function relativeLuminance(r, g, b) {
   const s = [r, g, b].map(v => {
@@ -14,28 +15,39 @@ function relativeLuminance(r, g, b) {
 function contrastRatio(r1, g1, b1, r2, g2, b2) {
   const l1 = relativeLuminance(r1, g1, b1);
   const l2 = relativeLuminance(r2, g2, b2);
-  const lighter = Math.max(l1, l2);
-  const darker  = Math.min(l1, l2);
-  return (lighter + 0.05) / (darker + 0.05);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
-function ContrastBadge({ ratio }) {
+function WcagBadge({ ratio }) {
   const aaa   = ratio >= 7;
   const aa    = ratio >= 4.5;
   const large = ratio >= 3;
   const bg    = aaa ? '#166534' : aa ? '#14532d' : large ? '#713f12' : '#7f1d1d';
-  const label = aaa ? 'AAA' : aa ? 'AA' : large ? 'AA Large' : 'Fail';
-
+  const label = aaa ? 'AAA' : aa ? 'AA' : large ? 'AA Lg' : 'Fail';
   return (
-    <div style={{
-      fontSize: 8, fontWeight: 'bold', letterSpacing: '0.04rem',
+    <span style={{
+      fontSize: 7, fontWeight: 'bold', letterSpacing: '0.04rem',
       fontFamily: 'Helvetica, Arial, sans-serif', textTransform: 'uppercase',
       background: bg, color: '#fff',
-      borderRadius: 2, padding: '1px 4px', display: 'inline-block',
-      marginTop: 2,
+      borderRadius: 2, padding: '1px 3px',
     }}>
       {label}
-    </div>
+    </span>
+  );
+}
+
+function ApcaBadge({ lc }) {
+  const level = apcaLevel(lc);
+  const bg = level.ok ? '#1e3a5f' : '#7f1d1d';
+  return (
+    <span style={{
+      fontSize: 7, fontWeight: 'bold', letterSpacing: '0.04rem',
+      fontFamily: 'Helvetica, Arial, sans-serif', textTransform: 'uppercase',
+      background: bg, color: '#fff',
+      borderRadius: 2, padding: '1px 3px', marginLeft: 2,
+    }}>
+      {level.short}
+    </span>
   );
 }
 
@@ -44,29 +56,26 @@ function MatrixCell({ fg, bg, isSelf }) {
     return (
       <div style={{
         background: `repeating-linear-gradient(45deg, ${rgbToHex(bg.r, bg.g, bg.b)}, ${rgbToHex(bg.r, bg.g, bg.b)} 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px)`,
-        borderRadius: 4, minHeight: 64,
+        borderRadius: 4, minHeight: 74,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <div style={{
-          width: 20, height: 2,
-          background: 'rgba(0,0,0,0.2)', borderRadius: 1,
-        }} />
+        <div style={{ width: 20, height: 2, background: 'rgba(0,0,0,0.2)', borderRadius: 1 }} />
       </div>
     );
   }
 
-  const ratio = contrastRatio(fg.r, fg.g, fg.b, bg.r, bg.g, bg.b);
-  const hex   = rgbToHex(bg.r, bg.g, bg.b);
+  const wcag = contrastRatio(fg.r, fg.g, fg.b, bg.r, bg.g, bg.b);
+  const lc   = apcaContrast(fg.r, fg.g, fg.b, bg.r, bg.g, bg.b);
+  const hex  = rgbToHex(bg.r, bg.g, bg.b);
   const textDark = useDarkText(bg.r, bg.g, bg.b);
 
   return (
     <div style={{
       background: hex,
       WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
-      borderRadius: 4, padding: '5px 6px', minHeight: 64,
+      borderRadius: 4, padding: '5px 6px', minHeight: 74,
       display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
     }}>
-      {/* Sample text in the foreground colour */}
       <div style={{
         color: rgbToHex(fg.r, fg.g, fg.b),
         fontFamily: 'Helvetica, Arial, sans-serif',
@@ -78,14 +87,24 @@ function MatrixCell({ fg, bg, isSelf }) {
         Aa
       </div>
       <div>
+        {/* WCAG 2.1 row */}
         <div style={{
-          fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 8,
+          fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 7,
           fontWeight: 'bold', letterSpacing: '0.02rem',
-          color: textDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)',
+          color: textDark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)',
+          marginBottom: 2, display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap',
         }}>
-          {ratio.toFixed(1)}:1
+          {wcag.toFixed(1)}:1 <WcagBadge ratio={wcag} />
         </div>
-        <ContrastBadge ratio={ratio} />
+        {/* APCA row */}
+        <div style={{
+          fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 7,
+          fontWeight: 'bold', letterSpacing: '0.02rem',
+          color: textDark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)',
+          display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap',
+        }}>
+          Lc {Math.abs(lc).toFixed(0)} <ApcaBadge lc={lc} />
+        </div>
       </div>
     </div>
   );
@@ -94,7 +113,6 @@ function MatrixCell({ fg, bg, isSelf }) {
 export default function ContrastMatrix({ colours }) {
   const [names, setNames] = useState([]);
 
-  // Compute colour names async (same pattern as ColourResult)
   useEffect(() => {
     const id = setTimeout(() => {
       setNames(colours.map(c => nameColour(c.r, c.g, c.b).name));
@@ -109,7 +127,7 @@ export default function ContrastMatrix({ colours }) {
         fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase',
         letterSpacing: '0.02rem', opacity: 0.3, color: 'var(--color-fg)',
       }}>
-        Add at least 2 colours to the queue to see the contrast matrix.
+        Add at least 2 colours to see the contrast matrix.
       </div>
     );
   }
@@ -126,20 +144,19 @@ export default function ContrastMatrix({ colours }) {
       <div style={{
         fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 9,
         fontWeight: 'bold', letterSpacing: '0.02rem', textTransform: 'uppercase',
-        color: 'var(--color-fg)', opacity: 0.4, marginBottom: 16,
+        color: 'var(--color-fg)', opacity: 0.4, marginBottom: 12,
       }}>
-        Row = foreground · Column = background · WCAG 2.1 ratios
+        Row = foreground · Column = background · WCAG 2.1 ratio + APCA Lc
       </div>
 
       {/* Legend */}
-      <div style={{
-        display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap',
-      }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { label: 'AAA ≥7:1', bg: '#166534' },
           { label: 'AA ≥4.5:1', bg: '#14532d' },
-          { label: 'AA Large ≥3:1', bg: '#713f12' },
+          { label: 'AA Lg ≥3:1', bg: '#713f12' },
           { label: 'Fail <3:1', bg: '#7f1d1d' },
+          { label: 'APCA Fluent Lc75+', bg: '#1e3a5f' },
         ].map(({ label, bg }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <div style={{ width: 8, height: 8, borderRadius: 2, background: bg }} />
@@ -158,11 +175,9 @@ export default function ContrastMatrix({ colours }) {
         gridTemplateColumns: `120px repeat(${colours.length}, 1fr)`,
         gap: 4, marginBottom: 4,
       }}>
-        <div /> {/* empty corner */}
+        <div />
         {colours.map((c, ci) => (
-          <div key={ci} style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-          }}>
+          <div key={ci} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
             <div style={{
               width: '100%', height: 14, borderRadius: 3,
               background: rgbToHex(c.r, c.g, c.b),
@@ -172,8 +187,7 @@ export default function ContrastMatrix({ colours }) {
             <div style={{
               fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 8,
               fontWeight: 'bold', letterSpacing: '0.02rem', textTransform: 'uppercase',
-              color: 'var(--color-fg)', opacity: 0.5, textAlign: 'center',
-              lineHeight: 1.3,
+              color: 'var(--color-fg)', opacity: 0.5, textAlign: 'center', lineHeight: 1.3,
             }}>
               {c.label || names[ci] || `${ci + 1}`}
             </div>
@@ -188,10 +202,7 @@ export default function ContrastMatrix({ colours }) {
           gridTemplateColumns: `120px repeat(${colours.length}, 1fr)`,
           gap: 4, marginBottom: 4,
         }}>
-          {/* Row header */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4,
-          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
             <div style={{
               width: 12, height: 12, borderRadius: 2, flexShrink: 0,
               background: rgbToHex(fgColour.r, fgColour.g, fgColour.b),
@@ -206,24 +217,14 @@ export default function ContrastMatrix({ colours }) {
               {fgColour.label || names[ri] || `Colour ${ri + 1}`}
             </div>
           </div>
-
-          {/* Cells */}
           {colours.map((bgColour, ci) => (
-            <MatrixCell
-              key={ci}
-              fg={fgColour}
-              bg={bgColour}
-              isSelf={ri === ci}
-            />
+            <MatrixCell key={ci} fg={fgColour} bg={bgColour} isSelf={ri === ci} />
           ))}
         </div>
       ))}
 
       {/* CMYK reference table */}
-      <div style={{
-        marginTop: 20, paddingTop: 16,
-        borderTop: '1px solid var(--color-accent)',
-      }}>
+      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--color-accent)' }}>
         <div style={{
           fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 9,
           fontWeight: 'bold', letterSpacing: '0.05rem', textTransform: 'uppercase',

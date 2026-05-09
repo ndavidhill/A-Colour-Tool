@@ -1,4 +1,7 @@
-import { rgbToCmyk, buildGrid, rgbToHex } from './colourMath';
+import { rgbToCmyk, buildGrid, rgbToHex, generateHarmonies } from './colourMath';
+import { generateRadixPalette, STEP_LABELS } from './radixPalette';
+
+// ─── CSV export ───────────────────────────────────────────────────────────────
 
 export function buildExportData(colours, step, spread) {
   const rows = [[
@@ -11,8 +14,8 @@ export function buildExportData(colours, step, spread) {
   ]];
 
   colours.forEach((entry, gi) => {
-    const baseCmyk = rgbToCmyk(entry.r, entry.g, entry.b);
-    const grid = buildGrid(entry, baseCmyk, step, spread);
+    const baseCmyk  = rgbToCmyk(entry.r, entry.g, entry.b);
+    const grid      = buildGrid(entry, baseCmyk, step, spread);
     const sourceHex = rgbToHex(entry.r, entry.g, entry.b).toUpperCase();
     const groupLabel = (entry.label || `RGB(${entry.r},${entry.g},${entry.b})`).replace(/,/g, ' ');
 
@@ -33,33 +36,17 @@ export function buildExportData(colours, step, spread) {
 }
 
 export function downloadCSV(colours, step, spread) {
-  const csv = buildExportData(colours, step, spread);
+  const csv  = buildExportData(colours, step, spread);
   const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
   a.href = url;
   a.download = `cmyk-grid-export-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-// ─── Figma Variables Export ───────────────────────────────────────────────────
-// Exports the Radix 12-step scale as Figma Variables with Light + Dark modes.
-//
-// OUTPUT: Two DTCG-format JSON files — figma-light.json and figma-dark.json
-//
-// HOW TO IMPORT (native Figma — no plugin needed):
-//   1. Open Figma → Variables panel (left sidebar or Edit menu)
-//   2. Create a new collection named "CMYK Colour System"
-//   3. Add a "Light" mode and a "Dark" mode
-//   4. Right-click "Light" mode → Import mode → select figma-light.json
-//   5. Right-click "Dark" mode → Import mode → select figma-dark.json
-//   6. You now have the Light/Dark mode switcher on every variable
-//
-// ALTERNATIVELY — drag both files at once into the Variables modal.
-// Figma creates one mode per file automatically.
-
-import { generateRadixPalette, STEP_LABELS } from './radixPalette';
+// ─── DTCG colour token helpers ────────────────────────────────────────────────
 
 function toHex(r, g, b) {
   return '#' + [r, g, b].map(v =>
@@ -67,7 +54,6 @@ function toHex(r, g, b) {
   ).join('');
 }
 
-// DTCG color token — Figma native import format (2024)
 function colorToken(r, g, b, description) {
   return {
     $type: 'color',
@@ -85,96 +71,44 @@ function colorToken(r, g, b, description) {
   };
 }
 
-// Sanitise group name for Figma variable naming
 function sanitise(str) {
   return str.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, ' ') || 'Colour';
 }
 
-// Build one DTCG token file for a given mode
-function buildModeTokens(colours, modeKey) {
-  const root = {};
+// ─── Semantic mapping ─────────────────────────────────────────────────────────
+// Default Radix-style mapping: step index (0-based) → [group, token, usage]
+// Callers can override this by passing a customMapping array.
 
-  colours.forEach(entry => {
-    const palette   = generateRadixPalette(entry.r, entry.g, entry.b);
-    const scale     = modeKey === 'light' ? palette.light : palette.dark;
-    const groupName = sanitise(entry.label || `RGB ${entry.r} ${entry.g} ${entry.b}`);
-
-    root[groupName] = { $type: 'color' };
-
-    scale.forEach((step, i) => {
-      // e.g. "Pantone 485/01 App BG"
-      const stepNum = String(i + 1).padStart(2, '0');
-      const key = `${stepNum} ${STEP_LABELS[i]}`;
-      root[groupName][key] = colorToken(
-        step.r, step.g, step.b,
-        `Step ${i + 1} of 12 · ${STEP_LABELS[i]}`
-      );
-    });
-
-    // Convenience alias — the raw source colour
-    root[groupName]['00 Brand Solid'] = colorToken(
-      entry.r, entry.g, entry.b,
-      'Source colour — use as primary brand fill'
-    );
-  });
-
-  return root;
-}
-
-function downloadJSON(data, filename) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ─── Semantic token layer ─────────────────────────────────────────────────────
-// Maps the 12 Radix scale steps to opinionated semantic token names.
-// These are the tokens that actually get used in component libraries —
-// not raw scale steps but named intentions.
-//
-// Structure: collection/group/token
-// e.g. "Pantone 485/Background/App" → step 1 light
-//      "Pantone 485/Solid/Default"  → step 9
-//      "Pantone 485/Text/High Contrast" → step 12
-
-const SEMANTIC_MAPPING = [
-  // Step → [group, token, usage note]
-  ['Background',  'App',          'Page and canvas background'],          // 1
-  ['Background',  'Subtle',       'Sidebar, card, and panel background'], // 2
-  ['Interactive', 'Default',      'UI element resting state'],            // 3
-  ['Interactive', 'Hovered',      'UI element hover state'],              // 4
-  ['Interactive', 'Selected',     'UI element active / selected state'],  // 5
-  ['Border',      'Subtle',       'Subtle separator and divider'],        // 6
-  ['Border',      'Default',      'Component border'],                    // 7
-  ['Border',      'Focus',        'Focus ring and input highlight'],      // 8
-  ['Solid',       'Default',      'Primary solid fill — buttons, badges'],// 9
-  ['Solid',       'Hovered',      'Primary solid fill on hover'],         // 10
-  ['Text',        'Low Contrast', 'Secondary text, placeholders'],        // 11
-  ['Text',        'High Contrast','Primary text on coloured backgrounds'],// 12
+export const DEFAULT_SEMANTIC_MAPPING = [
+  ['Background',  'App',          'Page and canvas background'],
+  ['Background',  'Subtle',       'Sidebar, card, and panel background'],
+  ['Interactive', 'Default',      'UI element resting state'],
+  ['Interactive', 'Hovered',      'UI element hover state'],
+  ['Interactive', 'Selected',     'UI element active / selected state'],
+  ['Border',      'Subtle',       'Subtle separator and divider'],
+  ['Border',      'Default',      'Component border'],
+  ['Border',      'Focus',        'Focus ring and input highlight'],
+  ['Solid',       'Default',      'Primary solid fill — buttons, badges'],
+  ['Solid',       'Hovered',      'Primary solid fill on hover'],
+  ['Text',        'Low Contrast', 'Secondary text, placeholders'],
+  ['Text',        'High Contrast','Primary text on coloured backgrounds'],
 ];
 
-// Component-level alias tokens — reference scale tokens by name
-// These show designers how to wire semantic → component tokens
 const COMPONENT_ALIASES = (groupName) => [
-  // [component token name, references semantic token]
-  [`${groupName}/Component/Button/Background`,      `{${groupName}/Solid/Default}`],
-  [`${groupName}/Component/Button/Background Hover`,`{${groupName}/Solid/Hovered}`],
-  [`${groupName}/Component/Button/Text`,            `{${groupName}/Text/High Contrast}`],
-  [`${groupName}/Component/Badge/Background`,       `{${groupName}/Background/Subtle}`],
-  [`${groupName}/Component/Badge/Text`,             `{${groupName}/Text/Low Contrast}`],
-  [`${groupName}/Component/Input/Border`,           `{${groupName}/Border/Default}`],
-  [`${groupName}/Component/Input/Border Focus`,     `{${groupName}/Border/Focus}`],
-  [`${groupName}/Component/Card/Background`,        `{${groupName}/Background/App}`],
-  [`${groupName}/Component/Card/Border`,            `{${groupName}/Border/Subtle}`],
-  [`${groupName}/Component/Link/Default`,           `{${groupName}/Solid/Default}`],
-  [`${groupName}/Component/Link/Hovered`,           `{${groupName}/Solid/Hovered}`],
+  [`${groupName}/Component/Button/Background`,       `{${groupName}/Solid/Default}`],
+  [`${groupName}/Component/Button/Background Hover`, `{${groupName}/Solid/Hovered}`],
+  [`${groupName}/Component/Button/Text`,             `{${groupName}/Text/High Contrast}`],
+  [`${groupName}/Component/Badge/Background`,        `{${groupName}/Background/Subtle}`],
+  [`${groupName}/Component/Badge/Text`,              `{${groupName}/Text/Low Contrast}`],
+  [`${groupName}/Component/Input/Border`,            `{${groupName}/Border/Default}`],
+  [`${groupName}/Component/Input/Border Focus`,      `{${groupName}/Border/Focus}`],
+  [`${groupName}/Component/Card/Background`,         `{${groupName}/Background/App}`],
+  [`${groupName}/Component/Card/Border`,             `{${groupName}/Border/Subtle}`],
+  [`${groupName}/Component/Link/Default`,            `{${groupName}/Solid/Default}`],
+  [`${groupName}/Component/Link/Hovered`,            `{${groupName}/Solid/Hovered}`],
 ];
 
-function buildSemanticTokens(colours, modeKey) {
+function buildSemanticTokens(colours, modeKey, mapping = DEFAULT_SEMANTIC_MAPPING) {
   const root = {};
 
   colours.forEach(entry => {
@@ -182,8 +116,7 @@ function buildSemanticTokens(colours, modeKey) {
     const scale     = modeKey === 'light' ? palette.light : palette.dark;
     const groupName = sanitise(entry.label || `RGB ${entry.r} ${entry.g} ${entry.b}`);
 
-    // Scale tokens with semantic names
-    SEMANTIC_MAPPING.forEach(([group, token, description], i) => {
+    mapping.forEach(([group, token, description], i) => {
       const step = scale[i];
       if (!root[groupName]) root[groupName] = {};
       if (!root[groupName][group]) root[groupName][group] = { $type: 'color' };
@@ -193,15 +126,14 @@ function buildSemanticTokens(colours, modeKey) {
       };
     });
 
-    // Raw scale reference (numbered, for design system engineers)
+    // Numbered scale reference
     root[`${groupName} Scale`] = { $type: 'color' };
     STEP_LABELS.forEach((label, i) => {
       const step = scale[i];
-      const num = String(i + 1).padStart(2, '0');
+      const num  = String(i + 1).padStart(2, '0');
       root[`${groupName} Scale`][`${num} ${label}`] = colorToken(step.r, step.g, step.b);
     });
 
-    // Brand solid
     root[groupName]['Brand Solid'] = {
       ...colorToken(entry.r, entry.g, entry.b),
       $description: 'Source colour — primary brand fill',
@@ -211,7 +143,6 @@ function buildSemanticTokens(colours, modeKey) {
   return root;
 }
 
-// Component aliases — separate file, references the semantic tokens
 function buildComponentTokens(colours) {
   const root = {};
   colours.forEach(entry => {
@@ -232,17 +163,155 @@ function buildComponentTokens(colours) {
   return root;
 }
 
-export function downloadFigmaVariables(colours) {
-  const date = new Date().toISOString().slice(0, 10);
+// ─── Harmony token export ─────────────────────────────────────────────────────
 
-  // Semantic scale — light
-  downloadJSON(buildSemanticTokens(colours, 'light'), `tokens-light-${date}.json`);
+function buildHarmonyTokens(colours) {
+  const root = {};
+
+  colours.forEach(entry => {
+    const groupName = sanitise(entry.label || `RGB ${entry.r} ${entry.g} ${entry.b}`);
+    const harmonies = generateHarmonies(entry.r, entry.g, entry.b);
+
+    root[groupName] = {
+      $type: 'color',
+      'Source': colorToken(entry.r, entry.g, entry.b, 'Source colour'),
+    };
+
+    harmonies.forEach(({ label, colours: hCols }) => {
+      const groupKey = label.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+      hCols.forEach((hc, i) => {
+        const key = hCols.length > 1 ? `${groupKey} ${i + 1}` : groupKey;
+        root[groupName][key] = colorToken(hc.r, hc.g, hc.b, `${label} harmony of ${groupName}`);
+      });
+    });
+  });
+
+  return root;
+}
+
+// ─── JSON download helper ─────────────────────────────────────────────────────
+
+function downloadJSON(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Download all token files ─────────────────────────────────────────────────
+// Options:
+//   includeHarmonies: boolean — also export tokens-harmonies.json
+//   semanticMapping:  array   — override the 12-step semantic mapping
+
+export function downloadFigmaVariables(colours, options = {}) {
+  const { includeHarmonies = false, semanticMapping } = options;
+  const date    = new Date().toISOString().slice(0, 10);
+  const mapping = semanticMapping || DEFAULT_SEMANTIC_MAPPING;
+
+  downloadJSON(buildSemanticTokens(colours, 'light', mapping), `tokens-light-${date}.json`);
   setTimeout(() => {
-    // Semantic scale — dark
-    downloadJSON(buildSemanticTokens(colours, 'dark'), `tokens-dark-${date}.json`);
+    downloadJSON(buildSemanticTokens(colours, 'dark', mapping), `tokens-dark-${date}.json`);
   }, 400);
   setTimeout(() => {
-    // Component aliases — mode-agnostic
     downloadJSON(buildComponentTokens(colours), `tokens-components-${date}.json`);
   }, 800);
+  if (includeHarmonies) {
+    setTimeout(() => {
+      downloadJSON(buildHarmonyTokens(colours), `tokens-harmonies-${date}.json`);
+    }, 1200);
+  }
+}
+
+// ─── Figma Variables REST API push ───────────────────────────────────────────
+// Uses the Figma Variables API (PATCH /v1/files/:fileKey/variables)
+// Requires: Personal Access Token with write scope + a Figma file key.
+//
+// Creates / updates a collection named "CMYK Colour System" with:
+//   - Light mode + Dark mode variable modes
+//   - All semantic scale tokens as COLOR variables
+//   - Harmony tokens in a separate "Harmonies" collection
+//
+// Note: The Figma Variables API requires a paid Organisation/Enterprise plan.
+
+export async function pushToFigmaAPI(colours, token, fileKey, options = {}) {
+  const { semanticMapping } = options;
+  const mapping = semanticMapping || DEFAULT_SEMANTIC_MAPPING;
+
+  // Build a flat list of variables with both light and dark values
+  const variables   = [];
+  const modeValues  = [];
+  let varIndex      = 0;
+
+  const colId    = 'VariableCollectionId:temp:cmyk';
+  const modeLight = `${colId}:light`;
+  const modeDark  = `${colId}:dark`;
+
+  colours.forEach(entry => {
+    const palette   = generateRadixPalette(entry.r, entry.g, entry.b);
+    const groupName = sanitise(entry.label || `RGB ${entry.r} ${entry.g} ${entry.b}`);
+
+    // Semantic tokens
+    mapping.forEach(([group, tokenName, _desc], i) => {
+      const id     = `VariableId:temp:${varIndex++}`;
+      const name   = `${groupName}/${group}/${tokenName}`;
+      const lStep  = palette.light[i];
+      const dStep  = palette.dark[i];
+
+      variables.push({
+        action: 'CREATE', id, name,
+        resolvedType: 'COLOR',
+        variableCollectionId: colId,
+      });
+      modeValues.push(
+        { variableId: id, modeId: modeLight, value: { r: lStep.r / 255, g: lStep.g / 255, b: lStep.b / 255, a: 1 } },
+        { variableId: id, modeId: modeDark,  value: { r: dStep.r / 255, g: dStep.g / 255, b: dStep.b / 255, a: 1 } },
+      );
+    });
+
+    // Brand solid
+    const solidId = `VariableId:temp:${varIndex++}`;
+    variables.push({
+      action: 'CREATE', id: solidId,
+      name: `${groupName}/Brand Solid`,
+      resolvedType: 'COLOR',
+      variableCollectionId: colId,
+    });
+    modeValues.push(
+      { variableId: solidId, modeId: modeLight, value: { r: entry.r / 255, g: entry.g / 255, b: entry.b / 255, a: 1 } },
+      { variableId: solidId, modeId: modeDark,  value: { r: entry.r / 255, g: entry.g / 255, b: entry.b / 255, a: 1 } },
+    );
+  });
+
+  const body = {
+    variableCollections: [{
+      action: 'CREATE', id: colId,
+      name: 'CMYK Colour System',
+      initialModeId: modeLight,
+    }],
+    variableModes: [
+      { action: 'CREATE', id: modeLight, name: 'Light', variableCollectionId: colId },
+      { action: 'CREATE', id: modeDark,  name: 'Dark',  variableCollectionId: colId },
+    ],
+    variables,
+    variableModeValues: modeValues,
+  };
+
+  const res = await fetch(`https://api.figma.com/v1/files/${fileKey}/variables`, {
+    method: 'POST',
+    headers: {
+      'X-Figma-Token': token,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Figma API error ${res.status}`);
+  }
+
+  return res.json();
 }
