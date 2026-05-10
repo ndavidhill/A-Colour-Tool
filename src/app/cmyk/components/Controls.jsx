@@ -14,45 +14,32 @@ const CB_LABELS = {
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
 const TABS = [
   { key: 'input',    label: 'Input' },
-  { key: 'queue',    label: 'Queue' },
   { key: 'harmony',  label: 'Harmony' },
   { key: 'export',   label: 'Export' },
   { key: 'settings', label: 'Settings' },
 ];
 
-function TabBar({ active, setActive, queueCount, paletteCount }) {
+function TabBar({ active, setActive }) {
   return (
     <div style={{
-      display: 'flex', borderBottom: '1px solid var(--color-accent)',
-      marginBottom: 0, flexShrink: 0,
+      display: 'flex', gap: 2, padding: '8px 8px 0', flexShrink: 0,
     }}>
       {TABS.map(t => (
         <button
           key={t.key}
           onClick={() => setActive(t.key)}
           style={{
-            flex: 1, padding: '8px 0',
-            background: 'none', border: 'none',
-            borderBottom: active === t.key ? '2px solid var(--color-fg)' : '2px solid transparent',
-            marginBottom: -1,
+            flex: 1, padding: '5px 0',
+            background: active === t.key ? 'var(--color-fg)' : 'var(--color-accent)',
+            color: active === t.key ? 'var(--color-bg)' : 'var(--color-fg)',
+            border: 'none', borderRadius: 4,
             cursor: 'pointer',
             fontFamily: 'Helvetica, Arial, sans-serif',
             fontSize: 9, fontWeight: 'bold',
             letterSpacing: '0.04rem', textTransform: 'uppercase',
-            color: active === t.key ? 'var(--color-fg)' : 'var(--color-fg)',
-            opacity: active === t.key ? 1 : 0.35,
-            position: 'relative',
           }}
         >
           {t.label}
-          {t.key === 'queue' && queueCount > 0 && (
-            <span style={{
-              position: 'absolute', top: 4, right: 4,
-              background: 'var(--color-fg)', color: 'var(--color-bg)',
-              borderRadius: 8, fontSize: 7, fontWeight: 'bold',
-              padding: '1px 4px', lineHeight: 1.4,
-            }}>{queueCount}</span>
-          )}
         </button>
       ))}
     </div>
@@ -375,7 +362,7 @@ export default function Controls({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TabBar active={tab} setActive={setTab} queueCount={colours.length} />
+      <TabBar active={tab} setActive={setTab} />
 
       {/* ── INPUT tab ───────────────────────────────────────────────────── */}
       {tab === 'input' && (
@@ -436,7 +423,7 @@ export default function Controls({
               rows={6}
               style={{
                 width: '100%', padding: 6,
-                background: 'var(--color-bg)', color: 'var(--color-fg)',
+                background: 'var(--color-accent)', color: 'var(--color-fg)',
                 borderRadius: 5, border: 'none', marginTop: 4, resize: 'vertical',
                 fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 12, lineHeight: 1.4,
                 letterSpacing: '0.02rem', textTransform: 'uppercase', fontWeight: 'bold',
@@ -475,63 +462,74 @@ export default function Controls({
             <RangeRow label={`Spread ${spread}`} min={1} max={2} value={spread} onChange={setSpread} />
           </div>
 
-          <div style={{ marginTop: 10, fontSize: 10, opacity: 0.3, lineHeight: 1.5, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '0.02rem', textTransform: 'uppercase' }}>
-            {new Date().toLocaleDateString('en-GB')}
-          </div>
-        </div>
-      )}
-
-      {/* ── QUEUE tab ───────────────────────────────────────────────────── */}
-      {tab === 'queue' && (
-        <div style={panelStyle}>
-          {/* Palette match badge */}
-          {matchedPalette && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'var(--color-accent)', borderRadius: 4,
-              padding: '5px 8px', marginBottom: 10,
-              fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 9,
-              fontWeight: 'bold', letterSpacing: '0.02rem', textTransform: 'uppercase',
-              color: 'var(--color-fg)',
-            }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />
-              Matches saved palette: {matchedPalette}
-            </div>
-          )}
-
-          {colours.length === 0 && (
-            <div style={{ fontSize: 10, opacity: 0.35, fontFamily: 'Helvetica, Arial, sans-serif' }}>No colours. Add from the Input tab.</div>
-          )}
-
-          {colours.map((c, i) => (
-            <QueueItem
-              key={`${c.r}-${c.g}-${c.b}-${i}`}
-              colour={c} index={i} total={colours.length}
-              onRemove={idx => setColours(p => p.filter((_, j) => j !== idx))}
-              onReorder={onReorderQueue}
-            />
-          ))}
-
-          <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
-            {colours.length > 1 && (
-              <Btn onClick={() => { onSnapshot(); setColours([]); try { localStorage.removeItem('cmyk-grid-session'); } catch {} }}
-                style={{ fontSize: 9, padding: '3px 8px', opacity: 0.55 }}>
-                Clear All
-              </Btn>
-            )}
-            {hasPrev && (
-              <Btn onClick={onRestorePrev} style={{ fontSize: 9, padding: '3px 8px', opacity: 0.55 }}>
-                ↩ Restore Previous
-              </Btn>
-            )}
-          </div>
-
-          {/* Palette manager */}
+          {/* ── Queue ─────────────────────────────────────────────────── */}
           <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--color-accent)' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: 9, fontWeight: 'bold', letterSpacing: '0.05rem', opacity: 0.4, fontFamily: 'Helvetica, Arial, sans-serif', textTransform: 'uppercase' }}>
+                Queue
+              </div>
+              {colours.length > 0 && (
+                <div style={{
+                  background: 'var(--color-fg)', color: 'var(--color-bg)',
+                  borderRadius: 8, fontSize: 7, fontWeight: 'bold',
+                  padding: '1px 5px', lineHeight: 1.4,
+                  fontFamily: 'Helvetica, Arial, sans-serif',
+                }}>{colours.length}</div>
+              )}
+            </div>
+
+            {matchedPalette && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'var(--color-accent)', borderRadius: 4,
+                padding: '5px 8px', marginBottom: 8,
+                fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 9,
+                fontWeight: 'bold', letterSpacing: '0.02rem', textTransform: 'uppercase',
+                color: 'var(--color-fg)',
+              }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />
+                Matches: {matchedPalette}
+              </div>
+            )}
+
+            {colours.length === 0 && (
+              <div style={{ fontSize: 10, opacity: 0.35, fontFamily: 'Helvetica, Arial, sans-serif' }}>No colours added yet.</div>
+            )}
+
+            {colours.map((c, i) => (
+              <QueueItem
+                key={`${c.r}-${c.g}-${c.b}-${i}`}
+                colour={c} index={i} total={colours.length}
+                onRemove={idx => setColours(p => p.filter((_, j) => j !== idx))}
+                onReorder={onReorderQueue}
+              />
+            ))}
+
+            <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+              {colours.length > 1 && (
+                <Btn onClick={() => { onSnapshot(); setColours([]); try { localStorage.removeItem('cmyk-grid-session'); } catch {} }}
+                  style={{ fontSize: 9, padding: '3px 8px', opacity: 0.55 }}>
+                  Clear All
+                </Btn>
+              )}
+              {hasPrev && (
+                <Btn onClick={onRestorePrev} style={{ fontSize: 9, padding: '3px 8px', opacity: 0.55 }}>
+                  ↩ Restore
+                </Btn>
+              )}
+            </div>
+          </div>
+
+          {/* ── Palette manager ───────────────────────────────────────── */}
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--color-accent)' }}>
             <div style={{ fontSize: 9, fontWeight: 'bold', letterSpacing: '0.05rem', opacity: 0.4, marginBottom: 8, fontFamily: 'Helvetica, Arial, sans-serif', textTransform: 'uppercase' }}>
               Saved Palettes
             </div>
             <PaletteManager palettes={palettes} onSave={onSavePalette} onLoad={onLoadPalette} onDelete={onDeletePalette} />
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 10, opacity: 0.3, lineHeight: 1.5, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '0.02rem', textTransform: 'uppercase' }}>
+            {new Date().toLocaleDateString('en-GB')}
           </div>
         </div>
       )}

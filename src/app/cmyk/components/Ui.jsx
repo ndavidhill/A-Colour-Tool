@@ -4,7 +4,7 @@ import { useState } from 'react';
 export const inputStyle = {
   width: '100%',
   padding: '3px 6px',
-  background: 'var(--color-bg)',
+  background: 'var(--color-accent)',
   color: 'var(--color-fg)',
   borderRadius: 5,
   border: 'none',
