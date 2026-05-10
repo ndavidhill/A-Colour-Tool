@@ -6,6 +6,7 @@ import ContrastMatrix from './components/ContrastMatrix';
 import HealthReport from './components/HealthReport';
 import CompareView from './components/CompareView';
 import HarmonyView from './components/HarmonyView';
+import SpecSheet from './components/SpecSheet';
 
 const STORAGE_KEY  = 'cmyk-grid-session';
 const PALETTES_KEY = 'cmyk-grid-palettes';
@@ -45,6 +46,7 @@ const VIEWS = [
   { key: 'compare',  label: 'Compare' },
   { key: 'contrast', label: 'Contrast' },
   { key: 'health',   label: 'Health' },
+  { key: 'spec',     label: 'Spec' },
 ];
 
 export default function CMYKTester() {
@@ -299,6 +301,10 @@ export default function CMYKTester() {
             gamutThreshold={gamutThreshold}
             contrastMin={contrastMin}
           />
+        )}
+
+        {ready && view === 'spec' && (
+          <SpecSheet colours={colours} />
         )}
       </div>
     </div>
