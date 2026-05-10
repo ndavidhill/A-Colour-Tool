@@ -7,6 +7,7 @@ import HealthReport from './components/HealthReport';
 import CompareView from './components/CompareView';
 import HarmonyView from './components/HarmonyView';
 import SpecSheet from './components/SpecSheet';
+import UIScaleView from './components/UIScaleView';
 
 const STORAGE_KEY  = 'cmyk-grid-session';
 const PALETTES_KEY = 'cmyk-grid-palettes';
@@ -46,7 +47,8 @@ const VIEWS = [
   { key: 'compare',  label: 'Compare' },
   { key: 'contrast', label: 'Contrast' },
   { key: 'health',   label: 'Health' },
-  { key: 'spec',     label: 'Spec' },
+  { key: 'spec',     label: 'Spec'     },
+  { key: 'ui',       label: 'UI Scale' },
 ];
 
 export default function CMYKTester() {
@@ -305,6 +307,10 @@ export default function CMYKTester() {
 
         {ready && view === 'spec' && (
           <SpecSheet colours={colours} />
+        )}
+
+        {ready && view === 'ui' && (
+          <UIScaleView colours={colours} />
         )}
       </div>
     </div>

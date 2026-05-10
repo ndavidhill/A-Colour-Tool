@@ -146,6 +146,24 @@ export function generateRadixPalette(r, g, b) {
   };
 }
 
+// ─── Alpha scale ──────────────────────────────────────────────────────────────
+// For each light-mode step, compute the alpha of the source colour that, when
+// composited on white, produces an equivalent tint. Used for overlay tokens.
+// Formula: R_step = R_src × α + 255 × (1−α)  →  α = (255 − R_step) / (255 − R_src)
+export function generateAlphaScale(r, g, b) {
+  const palette = generateRadixPalette(r, g, b);
+  return palette.light.map(step => {
+    const candidates = [];
+    if (r !== 255) candidates.push((255 - step.r) / (255 - r));
+    if (g !== 255) candidates.push((255 - step.g) / (255 - g));
+    if (b !== 255) candidates.push((255 - step.b) / (255 - b));
+    const alpha = candidates.length
+      ? parseFloat(Math.max(0, Math.min(1, Math.max(...candidates))).toFixed(3))
+      : 0;
+    return { r, g, b, alpha };
+  });
+}
+
 // Step semantic labels (Radix convention)
 export const STEP_LABELS = [
   'App BG',      // 1
