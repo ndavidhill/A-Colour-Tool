@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { generateRadixPalette, generateAlphaScale, STEP_LABELS } from '../radixPalette';
 import { rgbToHex, useDarkText } from '../colourMath';
-import { apcaContrast, apcaLevel } from '../apca';
+import { apcaContrast } from '../apca';
 import { downloadFigmaVariables } from '../export';
 
 const MONO = {
@@ -420,7 +420,7 @@ function AccessibilityPanel({ palette }) {
           <thead>
             <tr>
               {/* Row header spacer */}
-              <th style={{ width: 100, minWidth: 100 }} />
+              <th style={{ width: 90, minWidth: 90 }} />
               {/* Column group labels */}
               {steps.map((s, ci) => (
                 <th key={ci} style={{
@@ -446,7 +446,7 @@ function AccessibilityPanel({ palette }) {
                 return (
                   <th key={ci} style={{ padding: '0 0 8px', textAlign: 'center' }}>
                     <div style={{
-                      width: 28, height: 28, borderRadius: 3, background: hex,
+                      width: 22, height: 22, borderRadius: 3, background: hex,
                       margin: '0 auto 3px',
                       WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
                       outline: ci === 8 ? '2px solid var(--color-fg)' : '1px solid var(--color-accent)',
@@ -475,7 +475,7 @@ function AccessibilityPanel({ palette }) {
                       </td>
                     </tr>
                   )}
-                  <tr key={ri}>
+                  <tr>
                     {/* Row label */}
                     <td style={{ padding: '2px 8px 2px 0', verticalAlign: 'middle' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -509,7 +509,7 @@ function AccessibilityPanel({ palette }) {
                           style={{
                             background: cell.bg,
                             borderRadius: 3,
-                            width: 38, minWidth: 38, height: 34,
+                            width: 34, minWidth: 34, height: 32,
                             textAlign: 'center', verticalAlign: 'middle',
                             cursor: 'default',
                             outline: isSolidCol ? '1px solid rgba(128,128,128,0.3)' : 'none',
