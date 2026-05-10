@@ -390,19 +390,26 @@ function rotateHue(r, g, b, angle) {
   return oklchToRgbSimple(L, C, (H + angle + 360) % 360);
 }
 
-export function generateHarmonies(r, g, b) {
-  const comp  = rotateHue(r, g, b, 180);
-  const tri1  = rotateHue(r, g, b, 120);
-  const tri2  = rotateHue(r, g, b, 240);
-  const split1 = rotateHue(r, g, b, 150);
-  const split2 = rotateHue(r, g, b, 210);
-  const ana1  = rotateHue(r, g, b, 30);
-  const ana2  = rotateHue(r, g, b, -30);
+// options.compAngle    — complementary hue offset (default 180, range 120–240)
+// options.splitAngle   — split-complementary offset from source (default 150)
+// options.analogRange  — analogous ± range in degrees (default 30)
+export function generateHarmonies(r, g, b, options = {}) {
+  const compAngle   = options.compAngle   ?? 180;
+  const splitAngle  = options.splitAngle  ?? 150;
+  const analogRange = options.analogRange ?? 30;
+
+  const comp   = rotateHue(r, g, b, compAngle);
+  const tri1   = rotateHue(r, g, b, 120);
+  const tri2   = rotateHue(r, g, b, 240);
+  const split1 = rotateHue(r, g, b,  splitAngle);
+  const split2 = rotateHue(r, g, b, 360 - splitAngle);
+  const ana1   = rotateHue(r, g, b,  analogRange);
+  const ana2   = rotateHue(r, g, b, -analogRange);
 
   return [
-    { label: 'Complementary',       colours: [comp] },
-    { label: 'Triadic',             colours: [tri1, tri2] },
-    { label: 'Split-Complementary', colours: [split1, split2] },
-    { label: 'Analogous',           colours: [ana1, ana2] },
+    { label: 'Complementary',       colours: [comp],          angles: [compAngle] },
+    { label: 'Triadic',             colours: [tri1, tri2],    angles: [120, 240] },
+    { label: 'Split-Complementary', colours: [split1, split2],angles: [splitAngle, 360 - splitAngle] },
+    { label: 'Analogous',           colours: [ana1, ana2],    angles: [analogRange, -analogRange] },
   ];
 }

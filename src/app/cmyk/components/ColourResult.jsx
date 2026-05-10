@@ -1,22 +1,75 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { rgbToCmyk, buildGrid, rgbToHex, nearestPantones, nearestPantonesForCmyk, cmykToRgb, useDarkText } from '../colourMath';
+import { rgbToCmyk, buildGrid, rgbToHex, nearestPantones, nearestPantonesForCmyk, cmykToRgb, useDarkText, isOutOfGamut } from '../colourMath';
 import { nameColour } from '../colourNames';
 import Swatch from './Swatch';
 import RadixPaletteStrip from './RadixPaletteStrip';
+
+function relativeLuminance(r, g, b) {
+  return [r, g, b].reduce((acc, v, i) => {
+    const c = v / 255;
+    return acc + (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)) * [0.2126, 0.7152, 0.0722][i];
+  }, 0);
+}
 
 function useColourData(r, g, b) {
   const [data, setData] = useState(null);
   useEffect(() => {
     const id = setTimeout(() => {
-      const baseCmyk    = rgbToCmyk(r, g, b);
-      const pantones    = nearestPantones(r, g, b, 2);
-      const colourName  = nameColour(r, g, b);
-      setData({ baseCmyk, pantones, colourName });
+      const baseCmyk   = rgbToCmyk(r, g, b);
+      const pantones   = nearestPantones(r, g, b, 2);
+      const colourName = nameColour(r, g, b);
+      const gamut      = isOutOfGamut(r, g, b);
+      const tac        = baseCmyk.c + baseCmyk.m + baseCmyk.y + baseCmyk.k;
+      const lum        = relativeLuminance(r, g, b);
+      const cvw        = 1.05 / (lum + 0.05);
+      const cvb        = (lum + 0.05) / 0.05;
+      const maxContrast = Math.max(cvw, cvb);
+      setData({ baseCmyk, pantones, colourName, gamut, tac, maxContrast });
     }, 0);
     return () => clearTimeout(id);
   }, [r, g, b]);
   return data;
+}
+
+// Compact traffic-light dots for the three key health checks
+function HealthStrip({ gamut, tac, maxContrast }) {
+  const checks = [
+    {
+      label: 'Gamut',
+      status: gamut.outOfGamut ? 'fail' : 'pass',
+      title: gamut.outOfGamut ? `Out of FOGRA39 gamut — dE ${gamut.deltaE.toFixed(1)}` : `In FOGRA39 gamut — dE ${gamut.deltaE.toFixed(1)}`,
+    },
+    {
+      label: 'TAC',
+      status: tac > 330 ? 'fail' : tac > 310 ? 'warn' : 'pass',
+      title: `Ink coverage ${tac}% (limit 330%)`,
+    },
+    {
+      label: 'Contrast',
+      status: maxContrast >= 4.5 ? 'pass' : maxContrast >= 3 ? 'warn' : 'fail',
+      title: `Max contrast vs black/white: ${maxContrast.toFixed(1)}:1`,
+    },
+  ];
+  const colors = { pass: '#16a34a', warn: '#d97706', fail: '#ef4444' };
+
+  return (
+    <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
+      {checks.map(c => (
+        <div key={c.label} title={c.title} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'default' }}>
+          <div style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: colors[c.status], flexShrink: 0,
+          }} />
+          <span style={{
+            fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 7,
+            fontWeight: 'bold', letterSpacing: '0.03rem', textTransform: 'uppercase',
+            color: 'var(--color-fg)', opacity: 0.4,
+          }}>{c.label}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function PantoneChip({ pantone, rank }) {
@@ -167,6 +220,15 @@ export default function ColourResult({ entry, step, spread }) {
               : `Nearest C${baseCmyk.c} M${baseCmyk.m} Y${baseCmyk.y} K${baseCmyk.k}`
             }
           </div>
+
+          {/* Health strip — gamut / TAC / contrast dots */}
+          {colourData?.gamut && (
+            <HealthStrip
+              gamut={colourData.gamut}
+              tac={colourData.tac}
+              maxContrast={colourData.maxContrast}
+            />
+          )}
 
           {/* Pantone references */}
           {displayPantones && (

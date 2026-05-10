@@ -101,28 +101,30 @@ export default function Swatch({ sw, isNearest, isSelected, onClick }) {
         {hex.toUpperCase()}
       </div>
 
-      {/* Copy button — shown on hover */}
-      {hovered && (
-        <button
-          onClick={handleCopy}
-          title="Copy CMYK values"
-          style={{
-            position: 'absolute', bottom: 5, right: 5,
-            background: copied
-              ? 'rgba(34,197,94,0.85)'
-              : dark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)',
-            color: textColor,
-            border: 'none', borderRadius: 3,
-            fontFamily: 'Helvetica, Arial, sans-serif',
-            fontSize: 7, fontWeight: 'bold',
-            letterSpacing: '0.03rem', textTransform: 'uppercase',
-            padding: '2px 4px', cursor: 'pointer',
-            lineHeight: 1.4,
-          }}
-        >
-          {copied ? '✓ Copied' : 'Copy'}
-        </button>
-      )}
+      {/* Copy icon — always visible at low opacity, solid on hover */}
+      <button
+        onClick={handleCopy}
+        title={`Copy CMYK: C${sw.c} M${sw.m} Y${sw.y} K${sw.k}`}
+        style={{
+          position: 'absolute', bottom: 5, right: 5,
+          background: copied
+            ? 'rgba(34,197,94,0.9)'
+            : hovered
+            ? (dark ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.28)')
+            : (dark ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.14)'),
+          color: textColor,
+          border: 'none', borderRadius: 3,
+          fontFamily: 'Helvetica, Arial, sans-serif',
+          fontSize: 7, fontWeight: 'bold',
+          letterSpacing: '0.03rem', textTransform: 'uppercase',
+          padding: '2px 4px', cursor: 'pointer',
+          lineHeight: 1.4,
+          opacity: copied || hovered ? 1 : 0.45,
+          transition: 'opacity 0.15s, background 0.15s',
+        }}
+      >
+        {copied ? '✓' : '⊞'}
+      </button>
     </div>
   );
 }

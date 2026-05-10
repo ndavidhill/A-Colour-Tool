@@ -5,10 +5,11 @@ import ColourResult from './components/ColourResult';
 import ContrastMatrix from './components/ContrastMatrix';
 import HealthReport from './components/HealthReport';
 import CompareView from './components/CompareView';
+import HarmonyView from './components/HarmonyView';
 
-const STORAGE_KEY    = 'cmyk-grid-session';
-const PALETTES_KEY   = 'cmyk-grid-palettes';
-const PREV_KEY       = 'cmyk-grid-previous';
+const STORAGE_KEY  = 'cmyk-grid-session';
+const PALETTES_KEY = 'cmyk-grid-palettes';
+const PREV_KEY     = 'cmyk-grid-previous';
 const DEFAULT_COLOURS = [{ r: 218, g: 41, b: 28, label: 'Pantone 485' }];
 
 function loadSession() {
@@ -21,38 +22,26 @@ function loadSession() {
   } catch (e) { return null; }
 }
 
-function saveSession(colours, step, spread, inverted) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ colours, step, spread, inverted }));
-  } catch (e) {}
+function saveSession(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
 }
 
 function loadPalettes() {
-  try {
-    const raw = localStorage.getItem(PALETTES_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch (e) { return {}; }
+  try { return JSON.parse(localStorage.getItem(PALETTES_KEY) || '{}'); } catch { return {}; }
 }
-
-function savePalettes(palettes) {
-  try { localStorage.setItem(PALETTES_KEY, JSON.stringify(palettes)); } catch (e) {}
+function savePalettes(p) {
+  try { localStorage.setItem(PALETTES_KEY, JSON.stringify(p)); } catch {}
 }
-
 function snapshotToPrev(colours, step, spread) {
-  try {
-    localStorage.setItem(PREV_KEY, JSON.stringify({ colours, step, spread }));
-  } catch (e) {}
+  try { localStorage.setItem(PREV_KEY, JSON.stringify({ colours, step, spread })); } catch {}
 }
-
 function loadPrev() {
-  try {
-    const raw = localStorage.getItem(PREV_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) { return null; }
+  try { return JSON.parse(localStorage.getItem(PREV_KEY) || 'null'); } catch { return null; }
 }
 
 const VIEWS = [
   { key: 'grid',     label: 'Grid' },
+  { key: 'harmony',  label: 'Harmony' },
   { key: 'compare',  label: 'Compare' },
   { key: 'contrast', label: 'Contrast' },
   { key: 'health',   label: 'Health' },
@@ -67,16 +56,19 @@ export default function CMYKTester() {
   const [cbFilter, setCbFilter] = useState('none');
   const [view, setView]         = useState('grid');
 
-  // Saved palettes
   const [palettes, setPalettes] = useState({});
+  const [hasPrev, setHasPrev]   = useState(false);
 
-  // Configurable print/accessibility thresholds
-  const [tacLimit, setTacLimit]           = useState(330);
-  const [gamutThreshold, setGamutThreshold] = useState(4.0);
-  const [contrastMin, setContrastMin]     = useState(4.5);
+  // Configurable thresholds
+  const [tacLimit, setTacLimit]               = useState(330);
+  const [gamutThreshold, setGamutThreshold]   = useState(4.0);
+  const [contrastMin, setContrastMin]         = useState(4.5);
 
-  // Whether a previous session snapshot exists (for undo/restore)
-  const [hasPrev, setHasPrev] = useState(false);
+  // Harmony angle controls
+  const [compAngle, setCompAngle]     = useState(180);
+  const [splitAngle, setSplitAngle]   = useState(150);
+  const [analogRange, setAnalogRange] = useState(30);
+  const harmonyAngles = { compAngle, splitAngle, analogRange };
 
   useEffect(() => {
     const saved = loadSession();
@@ -93,7 +85,7 @@ export default function CMYKTester() {
 
   useEffect(() => {
     if (!ready) return;
-    saveSession(colours, step, spread, inverted);
+    saveSession({ colours, step, spread, inverted });
   }, [colours, step, spread, inverted, ready]);
 
   // Palette operations
@@ -103,7 +95,6 @@ export default function CMYKTester() {
     setPalettes(next);
     savePalettes(next);
   }
-
   function loadPalette(name) {
     const p = palettes[name];
     if (!p) return;
@@ -112,7 +103,6 @@ export default function CMYKTester() {
     if (p.step)   setStep(p.step);
     if (p.spread) setSpread(p.spread);
   }
-
   function deletePalette(name) {
     const next = { ...palettes };
     delete next[name];
@@ -120,19 +110,31 @@ export default function CMYKTester() {
     savePalettes(next);
   }
 
-  // Snapshot before destructive operations
   function snapshot() {
     snapshotToPrev(colours, step, spread);
     setHasPrev(true);
   }
-
   function restorePrev() {
     const prev = loadPrev();
     if (!prev) return;
-    snapshot(); // save current as new prev before restoring
+    snapshot();
     setColours(prev.colours);
     if (prev.step)   setStep(prev.step);
     if (prev.spread) setSpread(prev.spread);
+  }
+
+  // Queue drag-to-reorder
+  function reorderQueue(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return;
+    const next = [...colours];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setColours(next);
+  }
+
+  function addHarmonyColour(r, g, b, label) {
+    snapshot();
+    setColours(prev => [...prev, { r, g, b, label }]);
   }
 
   const bg     = inverted ? '#000' : '#fff';
@@ -155,7 +157,6 @@ export default function CMYKTester() {
         ::selection { background: ${fg}; color: ${bg}; }
         a { color: ${fg}; }
         a:hover { opacity: 0.25; text-decoration: none; }
-        button:hover { opacity: 0.25; }
         @media (max-width: 800px) {
           body, html { overflow: auto; }
           .overlay-panel { position: relative !important; width: 100vw !important; height: auto !important; }
@@ -177,9 +178,7 @@ export default function CMYKTester() {
       <div className="overlay-panel no-print" style={{
         position: 'fixed', top: 0, left: 0,
         width: 350, height: '100vh',
-        padding: 10, paddingRight: 0,
-        zIndex: 1000, overflowY: 'auto',
-        scrollbarWidth: 'none', msOverflowStyle: 'none',
+        zIndex: 1000,
         background: bg, color: fg,
       }}>
         <Controls
@@ -188,7 +187,6 @@ export default function CMYKTester() {
           spread={spread} setSpread={setSpread}
           inverted={inverted} setInverted={setInverted}
           cbFilter={cbFilter} setCbFilter={setCbFilter}
-          view={view} setView={setView}
           palettes={palettes}
           onSavePalette={savePalette}
           onLoadPalette={loadPalette}
@@ -196,13 +194,18 @@ export default function CMYKTester() {
           hasPrev={hasPrev}
           onSnapshot={snapshot}
           onRestorePrev={restorePrev}
+          onReorderQueue={reorderQueue}
           tacLimit={tacLimit} setTacLimit={setTacLimit}
           gamutThreshold={gamutThreshold} setGamutThreshold={setGamutThreshold}
           contrastMin={contrastMin} setContrastMin={setContrastMin}
+          compAngle={compAngle} setCompAngle={setCompAngle}
+          splitAngle={splitAngle} setSplitAngle={setSplitAngle}
+          analogRange={analogRange} setAnalogRange={setAnalogRange}
+          onHarmonyViewRequest={() => setView('harmony')}
         />
       </div>
 
-      {/* SVG filters for colour blindness */}
+      {/* SVG filters */}
       <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
         <defs>
           <filter id="cb-deuteranopia">
@@ -266,12 +269,19 @@ export default function CMYKTester() {
               </div>
             )}
             {colours.map((entry, i) => (
-              <ColourResult
-                key={`${entry.r}-${entry.g}-${entry.b}-${i}`}
-                entry={entry} step={step} spread={spread}
-              />
+              <ColourResult key={`${entry.r}-${entry.g}-${entry.b}-${i}`} entry={entry} step={step} spread={spread} />
             ))}
           </>
+        )}
+
+        {ready && view === 'harmony' && (
+          <HarmonyView
+            colours={colours}
+            step={step}
+            spread={spread}
+            harmonyAngles={harmonyAngles}
+            onAddColour={addHarmonyColour}
+          />
         )}
 
         {ready && view === 'compare' && (
