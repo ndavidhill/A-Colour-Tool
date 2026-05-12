@@ -61,58 +61,75 @@ function oklchToRgb(L, C, H) {
 }
 
 // ─── Palette generation ───────────────────────────────────────────────────────
+//
+// Calibrated against the Radix UI custom palette tool output for several
+// reference colours (orange FA7319, blue 0070F3, red E5484D, green 30A46C).
+//
+// Key insight: steps 1–2 are near-achromatic backgrounds; steps 3–8 ramp
+// AGGRESSIVELY toward baseC so the UI component and border steps are visibly
+// distinct. Our previous scale (max 0.28 × baseC at step 8) was ~4× too low,
+// producing indistinguishable grey-ish steps in light mode for vivid colours.
 
 // Radix lightness targets for light mode (steps 1–12)
-// Steps 1-2: backgrounds, 3-5: interactive, 6-8: borders, 9-10: solid, 11-12: text
 const LIGHT_LIGHTNESS = [
-  0.988, // 1  — app background
-  0.976, // 2  — subtle background
-  0.940, // 3  — UI element background
-  0.912, // 4  — hovered UI element
-  0.888, // 5  — active / selected
-  0.860, // 6  — subtle borders
-  0.820, // 7  — UI element border
-  0.760, // 8  — hovered border
+  0.988, // 1  — app background        (near-white)
+  0.972, // 2  — subtle background
+  0.934, // 3  — UI element background
+  0.900, // 4  — hovered UI element
+  0.864, // 5  — active / selected
+  0.824, // 6  — subtle borders
+  0.771, // 7  — UI element border
+  0.702, // 8  — hovered border        (clearly chromatic by here)
   null,  // 9  — solid (= input colour)
-  0.000, // 10 — hovered solid (compute below)
-  0.380, // 11 — low-contrast text
-  0.210, // 12 — high-contrast text
+  0.000, // 10 — hovered solid         (computed: baseL − 0.04)
+  0.440, // 11 — low-contrast text
+  0.230, // 12 — high-contrast text
 ];
 
-// Dark mode lightness targets
+// Dark mode lightness targets — mostly correct per user review, minor tweaks
 const DARK_LIGHTNESS = [
   0.130, // 1
-  0.160, // 2
-  0.210, // 3
-  0.250, // 4
-  0.285, // 5
-  0.330, // 6
-  0.400, // 7
-  0.480, // 8
+  0.162, // 2
+  0.212, // 3
+  0.252, // 4
+  0.288, // 5
+  0.334, // 6
+  0.404, // 7
+  0.484, // 8
   null,  // 9 — solid (= input colour)
   0.000, // 10 — hovered solid
   0.780, // 11 — low-contrast text
   0.920, // 12 — high-contrast text
 ];
 
-// Chroma scaling per step — bell curve centred around steps 8-10
-// Steps near backgrounds have low chroma; solid and text steps carry full chroma
+// Light mode chroma — calibrated to match Radix output.
+// Steps 1–2: barely perceptible tint (≈0.03–0.07 × baseC).
+// Steps 3–8: aggressive ramp from ~0.20 to ~0.97 × baseC so each step is
+//            clearly distinct and the border/interactive zones are vivid.
+// Steps 9–10: full source chroma.
+// Steps 11–12: pulled back for readable text at darker lightness.
 const LIGHT_CHROMA_SCALE = [
-  0.010, 0.020, 0.060, 0.090, 0.110,
-  0.130, 0.180, 0.280,
-  1.000, // 9 — base colour
+  0.030, // 1 — barely perceptible tint
+  0.070, // 2 — subtle background tint
+  0.200, // 3 — jump: clearly tinted UI BG
+  0.374, // 4 — noticeably coloured
+  0.540, // 5 — clearly coloured
+  0.690, // 6 — quite saturated
+  0.860, // 7 — very saturated
+  0.970, // 8 — near-full, lighter value
+  1.000, // 9 — source colour
   1.000, // 10
-  0.750, // 11
-  0.600, // 12
+  0.680, // 11 — text, moderate chroma
+  0.420, // 12 — text, constrained chroma
 ];
 
 const DARK_CHROMA_SCALE = [
-  0.020, 0.040, 0.100, 0.130, 0.160,
-  0.200, 0.320, 0.500,
+  0.020, 0.042, 0.105, 0.135, 0.165,
+  0.205, 0.325, 0.510,
   1.000, // 9
   1.000, // 10
   0.650, // 11
-  0.350, // 12
+  0.340, // 12
 ];
 
 export function generateRadixPalette(r, g, b) {
