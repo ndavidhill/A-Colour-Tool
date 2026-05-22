@@ -58,6 +58,109 @@ function toCSSVar(label) {
     .replace(/^-+|-+$/g, '');
 }
 
+// ─── SVG scale export ─────────────────────────────────────────────────────────
+// Builds a self-contained SVG string of the full 12-step scale (light, dark,
+// alpha rows) ready to paste straight into Figma. No CSS vars — all values are
+// resolved hex strings so the file renders correctly in any context.
+
+function darkText(r, g, b) {
+  const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) > 0.179;
+}
+
+function escXml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildScaleSVG(entry, palette, alphaSteps) {
+  const W = 1200, PAD = 20, LABEL_W = 54, GAP = 4, N = 12;
+  // Swatch width: fill available space after label and gaps
+  const SW = Math.floor((W - PAD * 2 - LABEL_W - GAP * (N - 1)) / N); // ≈ 88 px
+
+  const SH = 80, ALPHA_H = 60;
+  const ROW_LBL_H = 22, STEP_LBL_H = 20, SEC_GAP = 18, TITLE_H = 54;
+
+  const yLight = PAD + TITLE_H;
+  const yDark  = yLight + ROW_LBL_H + SH + STEP_LBL_H + SEC_GAP;
+  const yAlpha = yDark  + ROW_LBL_H + SH + STEP_LBL_H + SEC_GAP;
+  const H      = yAlpha + ROW_LBL_H + ALPHA_H + STEP_LBL_H + PAD;
+
+  // X origin of swatch i
+  const sx = i => PAD + LABEL_W + i * (SW + GAP);
+
+  // WCAG badge for solid/text steps, mapped to SVG-safe label
+  function svgBadge(steps, i) {
+    if (i < 8) return null;
+    const ratio = wcagRatio(steps[i].r, steps[i].g, steps[i].b, steps[0].r, steps[0].g, steps[0].b);
+    const b = wcagBadge(ratio);
+    return { bg: b.bg, label: b.label === '✗' ? 'Fail' : b.label.replace('·', '-') };
+  }
+
+  // Render a solid-colour scale row (light or dark)
+  function svgRow(steps, rowLabel, baseY, rh) {
+    const out = [];
+    out.push(`<text x="${PAD}" y="${baseY + ROW_LBL_H - 5}" font-family="Helvetica,Arial,sans-serif" font-size="8" font-weight="bold" letter-spacing="1" fill="#999">${escXml(rowLabel)}</text>`);
+
+    steps.forEach((s, i) => {
+      const hex = rgbToHex(s.r, s.g, s.b);
+      const x = sx(i), y = baseY + ROW_LBL_H;
+      const tc = darkText(s.r, s.g, s.b) ? '#000000' : '#ffffff';
+      const bdg = svgBadge(steps, i);
+
+      out.push(`<rect x="${x}" y="${y}" width="${SW}" height="${rh}" rx="4" fill="${hex}"/>`);
+      out.push(`<text x="${x + 6}" y="${y + rh - 14}" font-family="Helvetica,Arial,sans-serif" font-size="8" font-weight="bold" fill="${tc}" opacity="0.7">${i + 1}</text>`);
+      out.push(`<text x="${x + 6}" y="${y + rh - 4}" font-family="Helvetica,Arial,sans-serif" font-size="6" fill="${tc}" opacity="0.45">${hex.toUpperCase()}</text>`);
+
+      if (bdg) {
+        const bw = bdg.label.length * 5 + 8;
+        const bx = x + SW - bw - 4;
+        out.push(`<rect x="${bx}" y="${y + 5}" width="${bw}" height="12" rx="2" fill="${bdg.bg}"/>`);
+        out.push(`<text x="${bx + bw / 2}" y="${y + 14}" font-family="Helvetica,Arial,sans-serif" font-size="6" font-weight="bold" fill="#fff" text-anchor="middle">${escXml(bdg.label)}</text>`);
+      }
+
+      // Step semantic label below swatch
+      out.push(`<text x="${x + SW / 2}" y="${baseY + ROW_LBL_H + rh + 14}" font-family="Helvetica,Arial,sans-serif" font-size="6" font-weight="bold" fill="#999" text-anchor="middle" opacity="0.5">${escXml(STEP_LABELS[i])}</text>`);
+    });
+    return out.join('\n  ');
+  }
+
+  // Render alpha row (source colour composited on white)
+  function svgAlphaRow(aSteps, r, g, b, baseY) {
+    const out = [];
+    out.push(`<text x="${PAD}" y="${baseY + ROW_LBL_H - 5}" font-family="Helvetica,Arial,sans-serif" font-size="8" font-weight="bold" letter-spacing="1" fill="#999">ALPHA</text>`);
+
+    aSteps.forEach((s, i) => {
+      const x = sx(i), y = baseY + ROW_LBL_H;
+      // White base so alpha compositing is visible
+      out.push(`<rect x="${x}" y="${y}" width="${SW}" height="${ALPHA_H}" rx="4" fill="#ffffff" stroke="#e8e8e8" stroke-width="1"/>`);
+      out.push(`<rect x="${x}" y="${y}" width="${SW}" height="${ALPHA_H}" rx="4" fill="rgb(${r},${g},${b})" opacity="${s.alpha.toFixed(3)}"/>`);
+      out.push(`<text x="${x + SW / 2}" y="${y + ALPHA_H - 5}" font-family="Helvetica,Arial,sans-serif" font-size="6" font-weight="bold" fill="#000" text-anchor="middle" opacity="0.4">${Math.round(s.alpha * 100)}%</text>`);
+      out.push(`<text x="${x + SW / 2}" y="${baseY + ROW_LBL_H + ALPHA_H + 14}" font-family="Helvetica,Arial,sans-serif" font-size="6" font-weight="bold" fill="#999" text-anchor="middle" opacity="0.5">${escXml(STEP_LABELS[i])}</text>`);
+    });
+    return out.join('\n  ');
+  }
+
+  const name  = entry.label || `RGB ${entry.r} ${entry.g} ${entry.b}`;
+  const solid = rgbToHex(entry.r, entry.g, entry.b);
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
+    `  <rect width="${W}" height="${H}" fill="#ffffff"/>`,
+    `  <!-- ${escXml(name)} · Radix 12-step UI scale -->`,
+    `  <rect x="${PAD}" y="${PAD + 4}" width="16" height="16" rx="3" fill="${solid}"/>`,
+    `  <text x="${PAD + 22}" y="${PAD + 16}" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="bold" fill="#000" letter-spacing="0.4">${escXml(name.toUpperCase())}</text>`,
+    `  <text x="${PAD + 22}" y="${PAD + 32}" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#aaa">${solid.toUpperCase()} · Radix 12-step scale</text>`,
+    `  ${svgRow(palette.light, 'LIGHT', yLight, SH)}`,
+    `  ${svgRow(palette.dark,  'DARK',  yDark,  SH)}`,
+    `  ${svgAlphaRow(alphaSteps, entry.r, entry.g, entry.b, yAlpha)}`,
+    `</svg>`,
+  ].join('\n');
+}
+
 // ─── Inner tab bar ────────────────────────────────────────────────────────────
 
 const INNER_TABS = [
@@ -217,22 +320,49 @@ function SemanticTable({ steps, mode }) {
   );
 }
 
-function ScalePanel({ palette, alphaSteps, r, g, b }) {
-  const [detail, setDetail] = useState(false);
+function ScalePanel({ palette, alphaSteps, r, g, b, entry }) {
+  const [detail, setDetail]       = useState(false);
+  const [svgCopied, setSvgCopied] = useState(false);
+
+  function handleCopySVG() {
+    const svg = buildScaleSVG(entry, palette, alphaSteps);
+    navigator.clipboard?.writeText(svg).then(() => {
+      setSvgCopied(true);
+      setTimeout(() => setSvgCopied(false), 1800);
+    });
+  }
+
   return (
     <div>
       <ScaleRow steps={palette.light} label="Light mode — 12-step scale" />
       <ScaleRow steps={palette.dark}  label="Dark mode — 12-step scale"  />
       <AlphaRow alphaSteps={alphaSteps} r={r} g={g} b={b} />
 
-      <button onClick={() => setDetail(v => !v)} style={{
-        marginTop: 4, padding: '4px 12px',
-        background: 'var(--color-accent)', color: 'var(--color-fg)',
-        border: 'none', borderRadius: 4, cursor: 'pointer',
-        ...MONO, fontSize: 9,
-      }}>
-        {detail ? 'Hide detail table' : 'Show semantic detail'}
-      </button>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button
+          onClick={handleCopySVG}
+          style={{
+            padding: '4px 12px',
+            background: svgCopied ? '#16a34a' : 'var(--color-fg)',
+            color: svgCopied ? '#fff' : 'var(--color-bg)',
+            border: 'none', borderRadius: 4, cursor: 'pointer',
+            ...MONO, fontSize: 9, transition: 'background 0.2s',
+          }}
+        >
+          {svgCopied ? '✓ SVG copied' : 'Copy SVG'}
+        </button>
+        <button onClick={() => setDetail(v => !v)} style={{
+          padding: '4px 12px',
+          background: 'var(--color-accent)', color: 'var(--color-fg)',
+          border: 'none', borderRadius: 4, cursor: 'pointer',
+          ...MONO, fontSize: 9,
+        }}>
+          {detail ? 'Hide detail table' : 'Show semantic detail'}
+        </button>
+        <span style={{ ...MONO, fontSize: 7, opacity: 0.3, color: 'var(--color-fg)' }}>
+          Paste SVG directly into Figma to preview before importing variables
+        </span>
+      </div>
 
       {detail && (
         <>
@@ -752,7 +882,7 @@ export default function UIScaleView({ colours }) {
 
       <InnerTabBar active={innerTab} setActive={setInnerTab} />
 
-      {palette && innerTab === 'scale'         && <ScalePanel        palette={palette} alphaSteps={alphaSteps} r={entry.r} g={entry.g} b={entry.b} />}
+      {palette && innerTab === 'scale'         && <ScalePanel        palette={palette} alphaSteps={alphaSteps} r={entry.r} g={entry.g} b={entry.b} entry={entry} />}
       {palette && innerTab === 'components'    && <ComponentsPanel   palette={palette} />}
       {palette && innerTab === 'accessibility' && <AccessibilityPanel palette={palette} />}
       {palette && innerTab === 'export'        && <ExportPanel       entry={entry} palette={palette} alphaSteps={alphaSteps} allColours={colours} />}
